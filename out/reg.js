@@ -27,6 +27,17 @@ function convert(r, startIndex) {
             current++;
             continue;
         }
+        if (char === '|') {
+            current++;
+            const nextChar = r.pattern[current];
+            if (isLetter(nextChar)) {
+                stack.push(charNFA(nextChar, current));
+                const nfa = orNFA(stack, startIndex);
+                stack.push(nfa);
+                continue;
+            }
+            throw new Error(`wrong char ${char} after or operation at ${current}`);
+        }
         return [null, new Error(`wrong char ${char} at ${current}`)];
     }
     const nfa = concatNFA(stack, startIndex);
@@ -34,6 +45,43 @@ function convert(r, startIndex) {
 }
 function isLetter(c) {
     return c >= 'a' && c <= 'z';
+}
+function orNFA(stack, index) {
+    if (stack.length < 2) {
+        throw new Error('less than 2 elements in stack');
+    }
+    let right = nfaOrModify(stack.pop());
+    let left = nfaOrModify(stack.pop());
+    reNumState(right, left.stateNum);
+    for (const [state, path] of right.graph.entries()) {
+        if (right.acceptStates.includes(state)) {
+            continue;
+        }
+        path.forEach((val, key) => {
+            if (val.has(right.acceptStates[0])) {
+                val.delete(right.acceptStates[0]);
+                val.add(left.acceptStates[0]);
+            }
+            // handle the first element of right nfa 
+            if (state === left.stateNum) {
+                const firstMap = left.graph.get(0);
+                firstMap === null || firstMap === void 0 ? void 0 : firstMap.set(key, val);
+            }
+        });
+        if (state === left.stateNum) {
+            continue;
+        }
+        left.graph.set(state, path);
+    }
+    right.char.forEach(i => left.char.add(i));
+    left.stateNum += (right.stateNum - 1);
+    left.substr += `|${right.substr}`;
+    return left;
+}
+function nfaOrModify(nfa) {
+    if (!nfa.isIn && !nfa.isOut) {
+        return nfa;
+    }
 }
 function concatNFA(stack, index) {
     if (stack.length === 1) {
@@ -108,7 +156,8 @@ function charNFA(c, index) {
         graph: new Map([
             [0, new Map([
                     [c, new Set([1])]
-                ])]
+                ])],
+            [1, new Map()]
         ])
     };
     return nfa;
@@ -126,7 +175,8 @@ function emptyNFA(index) {
         graph: new Map([
             [0, new Map([
                     [EPSILON, new Set([1])]
-                ])]
+                ])],
+            [1, new Map()]
         ])
     };
     return nfa;
@@ -138,6 +188,10 @@ function testReg() {
     printReg(r1);
     const r2 = regexp2Nfa("abc");
     printReg(r2);
+    const r3 = regexp2Nfa("b|c");
+    printReg(r3);
+    const r4 = regexp2Nfa("ab|c");
+    printReg(r4);
 }
 function printReg(r) {
     var _a;

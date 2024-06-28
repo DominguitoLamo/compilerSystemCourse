@@ -52,6 +52,20 @@ function convert(r: Reg, startIndex: number) : [NFAMap | null, Error | null] {
             continue
         }
 
+        if (char === '|') {
+            current++
+            const nextChar = r.pattern[current]
+            if (isLetter(nextChar)) {
+                stack.push(charNFA(nextChar, current))
+                current++
+                const nfa = orNFA(stack, startIndex)
+                stack.push(nfa)
+                continue
+            }
+
+            throw new Error(`wrong char ${char} after or operation at ${current}`)
+        }
+
         return [null, new Error(`wrong char ${char} at ${current}`)]
     }
 
@@ -61,6 +75,55 @@ function convert(r: Reg, startIndex: number) : [NFAMap | null, Error | null] {
 
 function isLetter(c: string) {
     return c >= 'a' && c <= 'z'
+}
+
+function orNFA(stack: Array<NFAMap>, index: number) : NFAMap {
+    if (stack.length < 2) {
+        throw new Error('less than 2 elements in stack')
+    }
+
+    let right = nfaOrModify(stack.pop()!)!
+    let left = nfaOrModify(stack.pop()!)!
+
+    reNumState(right, left.stateNum)
+    
+    for (const [state, path] of right.graph.entries()!) {
+        if (right.acceptStates.includes(state)) {
+            continue
+        }
+
+        path.forEach((val, key)=> {
+            if (val.has(right.acceptStates[0]!)) {
+                val.delete(right.acceptStates[0]!)
+                val.add(left.acceptStates[0]!)
+            }
+
+            // handle the first element of right nfa 
+            if (state === left.stateNum) {
+                const firstMap = left.graph.get(0)
+                firstMap?.set(key, val)
+            }
+        })
+
+        if (state === left.stateNum) {
+            continue
+        }
+
+        left.graph.set(state, path)
+    }
+
+    right.char.forEach(i => left.char.add(i))
+    left.stateNum += (right.stateNum - 1)
+    left.substr += `|${right.substr}`
+    left.startIndex = index
+    left.len = left.substr.length
+    return left
+}
+
+function nfaOrModify(nfa: NFAMap) {
+    if (!nfa.isIn && !nfa.isOut) {
+        return nfa
+    }
 }
 
 function concatNFA(stack: Array<NFAMap>, index: number) : NFAMap {
@@ -120,7 +183,6 @@ function reNumState(nfa: NFAMap, startIndex: number) {
         newGraph.set(newState, new Map())
         
         if (nfa.acceptStates.includes(state)) {
-            console.log('re num push:', state)
             newAccepted.push(newState)
         }
 
@@ -186,6 +248,12 @@ function testReg() {
 
     const r2 = regexp2Nfa("abc")
     printReg(r2)
+
+    const r3 = regexp2Nfa("b|c")
+    printReg(r3)
+
+    const r4 = regexp2Nfa("ab|c")
+    printReg(r4)
 }
 
 function printReg(r: Reg) {
