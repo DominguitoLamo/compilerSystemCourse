@@ -24,28 +24,39 @@ function regexp2Nfa(pattern: string) {
         len: pattern.length,
     }
 
-    const [nfa, err] = convert(r, 0)
-
-    if (!err) {
-        r.nfa = nfa!
-    } else {
-        console.error(err.message)
-    }
-    
+    const nfa = convert(r, 0)
+    r.nfa = nfa
     
     return r
 }
 
-function convert(r: Reg, startIndex: number) : [NFAMap | null, Error | null] {
+function convert(r: Reg, startIndex: number) : NFAMap {
     let current = startIndex
     const stack: Array<NFAMap> = []
 
     if (r.len === 0) {
-        return [emptyNFA(current), null]
+        return emptyNFA(current)
     }
 
     while (current < r.len) {
         const char = r.pattern[current]
+
+        if (char === '(') {
+            current++
+            const nfa = convert(r, current)
+            stack.push(nfa)
+            current += nfa.len
+            if (current > r.len || r.pattern[current] != ')') {
+                throw new Error(`no close parenthesis at index ${current}`)
+            }
+            current++
+            continue
+        }
+
+        if (char === ')') {
+            break
+        }
+
         if (isLetter(char)) {
             stack.push(charNFA(char, current))
             current++
@@ -73,11 +84,11 @@ function convert(r: Reg, startIndex: number) : [NFAMap | null, Error | null] {
             continue
         }
 
-        return [null, new Error(`wrong char ${char} at ${current}`)]
+        throw new Error(`wrong char ${char} at ${current}`)
     }
 
     const nfa = concatNFA(stack, startIndex)
-    return [nfa, null]
+    return nfa
 }
 
 function isLetter(c: string) {
@@ -260,6 +271,7 @@ function concatNFA(stack: Array<NFAMap>, index: number) : NFAMap {
     while (stack.length !== 0) {
         const current = stack.shift()!
         nfa.substr = `${nfa.substr}${current.substr}`
+        nfa.len = nfa.substr.length
         current.char.forEach(c => nfa.char.add(c))
 
         if (nfa.isOut && current?.isIn) {
@@ -377,11 +389,14 @@ function testReg() {
     // const r5 = regexp2Nfa("a*")
     // printReg(r5)
 
-    const r6 = regexp2Nfa("a*b")
-    printReg(r6)
+    // const r6 = regexp2Nfa("a*b")
+    // printReg(r6)
 
-    const r7 = regexp2Nfa("a*|b")
-    printReg(r7)
+    // const r7 = regexp2Nfa("a*|b")
+    // printReg(r7)
+
+    const r8 = regexp2Nfa("(ab)|c")
+    printReg(r8)
 }
 
 function printReg(r: Reg) {

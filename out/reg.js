@@ -5,23 +5,32 @@ function regexp2Nfa(pattern) {
         pattern: pattern,
         len: pattern.length,
     };
-    const [nfa, err] = convert(r, 0);
-    if (!err) {
-        r.nfa = nfa;
-    }
-    else {
-        console.error(err.message);
-    }
+    const nfa = convert(r, 0);
+    r.nfa = nfa;
     return r;
 }
 function convert(r, startIndex) {
     let current = startIndex;
     const stack = [];
     if (r.len === 0) {
-        return [emptyNFA(current), null];
+        return emptyNFA(current);
     }
     while (current < r.len) {
         const char = r.pattern[current];
+        if (char === '(') {
+            current++;
+            const nfa = convert(r, current);
+            stack.push(nfa);
+            current += nfa.len;
+            if (current > r.len || r.pattern[current] != ')') {
+                throw new Error(`no close parenthesis at index ${current}`);
+            }
+            current++;
+            continue;
+        }
+        if (char === ')') {
+            break;
+        }
         if (isLetter(char)) {
             stack.push(charNFA(char, current));
             current++;
@@ -45,24 +54,25 @@ function convert(r, startIndex) {
             current++;
             continue;
         }
-        return [null, new Error(`wrong char ${char} at ${current}`)];
+        throw new Error(`wrong char ${char} at ${current}`);
     }
     const nfa = concatNFA(stack, startIndex);
-    return [nfa, null];
+    return nfa;
 }
 function isLetter(c) {
     return c >= 'a' && c <= 'z';
 }
 function mapSetState(nfa, state, char, nextState) {
+    const nextStates = nextState instanceof Set ? [...nextState] : [nextState];
     if (!nfa.graph.get(state)) {
         nfa.graph.set(state, new Map());
     }
     const statePaths = nfa.graph.get(state);
     if (!statePaths.get(char)) {
-        statePaths.set(char, new Set([nextState]));
+        statePaths.set(char, new Set([...nextStates]));
     }
     else {
-        statePaths.get(char).add(nextState);
+        nextStates.forEach(i => statePaths.get(char).add(i));
     }
 }
 function closureNFA(stack) {
@@ -195,6 +205,7 @@ function concatNFA(stack, index) {
     while (stack.length !== 0) {
         const current = stack.shift();
         nfa.substr = `${nfa.substr}${current.substr}`;
+        nfa.len = nfa.substr.length;
         current.char.forEach(c => nfa.char.add(c));
         if (nfa.isOut && (current === null || current === void 0 ? void 0 : current.isIn)) {
             nfa.isOut = current.isOut;
@@ -217,7 +228,7 @@ function concatNFA(stack, index) {
             reNumState(current, nfa.stateNum);
             nfa.stateNum = nfa.stateNum + current.stateNum;
             current.graph.forEach((path, state) => {
-                nfa.graph.set(state, path);
+                path.forEach((next, c) => mapSetState(nfa, state, c, next));
             });
             nfa.acceptStates = current.acceptStates;
         }
@@ -294,10 +305,12 @@ function testReg() {
     // printReg(r4)
     // const r5 = regexp2Nfa("a*")
     // printReg(r5)
-    const r6 = regexp2Nfa("a*b");
-    printReg(r6);
-    const r7 = regexp2Nfa("a*|b");
-    printReg(r7);
+    // const r6 = regexp2Nfa("a*b")
+    // printReg(r6)
+    // const r7 = regexp2Nfa("a*|b")
+    // printReg(r7)
+    const r8 = regexp2Nfa("(ab)c");
+    printReg(r8);
 }
 function printReg(r) {
     var _a;
