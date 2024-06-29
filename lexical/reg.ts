@@ -41,6 +41,13 @@ function convert(r: Reg, startIndex: number) : NFAMap {
     }
 
     while (current < r.len) {
+        if (r.pStack.length >= 2) {
+            const pLen = r.pStack.length
+            if (r.pStack[pLen - 2] === '(' && r.pStack[pLen - 1] === ')') {
+                break
+            }
+        }
+
         const char = r.pattern[current]
 
         if (char === '(') {
@@ -88,7 +95,9 @@ function convert(r: Reg, startIndex: number) : NFAMap {
                 stack.push(nfa)
                 continue
             } else if (isOpenParenthesis(nextChar)) {
-                stack.push( convert(r, current) )
+                const right = convert(r, current)
+                current += right.len
+                stack.push(right)
                 const nfa = orNFA(stack)
                 stack.push(nfa)
                 continue
@@ -211,30 +220,18 @@ function orNFA(stack: Array<NFAMap>) : NFAMap {
     let left = nfaOrModify(stack.pop()!)!
 
     reNumState(right, left.stateNum)
+
+    right.graph.get(left.stateNum)?.forEach((nexts, c) => mapSetState(left, 0, c, nexts))
+    right.graph.delete(left.stateNum)
     
     for (const [state, path] of right.graph.entries()!) {
-        if (right.acceptStates.includes(state)) {
-            continue
-        }
-
-        path.forEach((val, key)=> {
-            if (val.has(right.acceptStates[0]!)) {
-                val.delete(right.acceptStates[0]!)
-                val.add(left.acceptStates[0]!)
+        path.forEach((next, c) => {
+            if (next.has(right.acceptStates[0])) {
+                next.delete(right.acceptStates[0])
+                next.add(left.acceptStates[0])
             }
-
-            // handle the first element of right nfa 
-            if (state === left.stateNum) {
-                const firstMap = left.graph.get(0)
-                firstMap?.set(key, val)
-            }
+            mapSetState(left, state, c, next)
         })
-
-        if (state === left.stateNum) {
-            continue
-        }
-
-        left.graph.set(state, path)
     }
 
     right.char.forEach(i => left.char.add(i))
@@ -428,8 +425,11 @@ function testReg() {
     // const r8 = regexp2Nfa("(ab)|c")
     // printReg(r8)
 
-    const r9 = regexp2Nfa("((ab)*a)")
-    printReg(r9)
+    // const r9 = regexp2Nfa("((ab)*a)")
+    // printReg(r9)
+
+    const r10 = regexp2Nfa("(cd|(ab)*)")
+    printReg(r10)
 }
 
 function printReg(r: Reg) {

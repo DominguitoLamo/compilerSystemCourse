@@ -17,19 +17,26 @@ function convert(r, startIndex) {
         return emptyNFA(current);
     }
     while (current < r.len) {
+        if (r.pStack.length >= 2) {
+            const pLen = r.pStack.length;
+            if (r.pStack[pLen - 2] === '(' && r.pStack[pLen - 1] === ')') {
+                break;
+            }
+        }
         const char = r.pattern[current];
         if (char === '(') {
             r.pStack.push(char);
             current++;
-            const nfa = addParenthesis(convert(r, current));
-            r.pStack.pop();
-            r.pStack.pop(); // discard ()
-            stack.push(nfa);
+            const nfa = convert(r, current);
+            nfa.substr += r.pStack.pop();
+            nfa.len++;
             current += nfa.len;
             if (current > r.len) {
                 throw new Error(`no close parenthesis at index ${current}`);
             }
-            current++;
+            nfa.substr = `${r.pStack.pop()}${nfa.substr}`;
+            nfa.len++;
+            stack.push(nfa);
             continue;
         }
         if (char === ')') {
@@ -56,7 +63,9 @@ function convert(r, startIndex) {
                 continue;
             }
             else if (isOpenParenthesis(nextChar)) {
-                stack.push(convert(r, current));
+                const right = convert(r, current);
+                current += right.len;
+                stack.push(right);
                 const nfa = orNFA(stack);
                 stack.push(nfa);
                 continue;
@@ -151,31 +160,23 @@ function closureNFA(stack) {
     return nfa;
 }
 function orNFA(stack) {
+    var _a;
     if (stack.length < 2) {
         throw new Error('less than 2 elements in stack');
     }
     let right = nfaOrModify(stack.pop());
     let left = nfaOrModify(stack.pop());
     reNumState(right, left.stateNum);
+    (_a = right.graph.get(left.stateNum)) === null || _a === void 0 ? void 0 : _a.forEach((nexts, c) => mapSetState(left, 0, c, nexts));
+    right.graph.delete(left.stateNum);
     for (const [state, path] of right.graph.entries()) {
-        if (right.acceptStates.includes(state)) {
-            continue;
-        }
-        path.forEach((val, key) => {
-            if (val.has(right.acceptStates[0])) {
-                val.delete(right.acceptStates[0]);
-                val.add(left.acceptStates[0]);
+        path.forEach((next, c) => {
+            if (next.has(right.acceptStates[0])) {
+                next.delete(right.acceptStates[0]);
+                next.add(left.acceptStates[0]);
             }
-            // handle the first element of right nfa 
-            if (state === left.stateNum) {
-                const firstMap = left.graph.get(0);
-                firstMap === null || firstMap === void 0 ? void 0 : firstMap.set(key, val);
-            }
+            mapSetState(left, state, c, next);
         });
-        if (state === left.stateNum) {
-            continue;
-        }
-        left.graph.set(state, path);
     }
     right.char.forEach(i => left.char.add(i));
     left.stateNum += (right.stateNum - 1);
@@ -334,8 +335,10 @@ function testReg() {
     // printReg(r7)
     // const r8 = regexp2Nfa("(ab)|c")
     // printReg(r8)
-    const r9 = regexp2Nfa("((ab)*a)");
-    printReg(r9);
+    // const r9 = regexp2Nfa("((ab)*a)")
+    // printReg(r9)
+    const r10 = regexp2Nfa("(cd|(ab)*)");
+    printReg(r10);
 }
 function printReg(r) {
     var _a;
