@@ -32,11 +32,18 @@ function convert(r, startIndex) {
             const nextChar = r.pattern[current];
             if (isLetter(nextChar)) {
                 stack.push(charNFA(nextChar, current));
-                const nfa = orNFA(stack, startIndex);
+                current++;
+                const nfa = orNFA(stack);
                 stack.push(nfa);
                 continue;
             }
             throw new Error(`wrong char ${char} after or operation at ${current}`);
+        }
+        if (char === '*') {
+            const nfa = closureNFA(stack);
+            stack.push(nfa);
+            current++;
+            continue;
         }
         return [null, new Error(`wrong char ${char} at ${current}`)];
     }
@@ -46,7 +53,71 @@ function convert(r, startIndex) {
 function isLetter(c) {
     return c >= 'a' && c <= 'z';
 }
-function orNFA(stack, index) {
+function mapSetState(nfa, state, char, nextState) {
+    if (!nfa.graph.get(state)) {
+        nfa.graph.set(state, new Map());
+    }
+    const statePaths = nfa.graph.get(state);
+    if (!statePaths.get(char)) {
+        statePaths.set(char, new Set([nextState]));
+    }
+    else {
+        statePaths.get(char).add(nextState);
+    }
+}
+function closureNFA(stack) {
+    if (stack.length === 0) {
+        throw new Error('no content to closure');
+    }
+    const nfa = stack.pop();
+    nfa.substr += '*';
+    nfa.len = nfa.substr.length;
+    if (!nfa.isIn && !nfa.isOut) {
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, 0);
+        mapSetState(nfa, 0, EPSILON, nfa.acceptStates[0]);
+        nfa.isIn = true;
+        nfa.isOut = true;
+        return nfa;
+    }
+    if (!nfa.isIn && nfa.isOut) {
+        nfa.graph.set(nfa.acceptStates[0] + 1, new Map());
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, 0);
+        mapSetState(nfa, 0, EPSILON, nfa.acceptStates[0] + 1);
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, nfa.acceptStates[0] + 1);
+        nfa.acceptStates[0] = nfa.acceptStates[0] + 1;
+        nfa.stateNum++;
+        nfa.isIn = true;
+        nfa.isOut = false;
+        return nfa;
+    }
+    if (nfa.isIn && !nfa.isOut) {
+        nfa.graph.set(nfa.acceptStates[0] + 1, new Map());
+        nfa.acceptStates[0] = nfa.acceptStates[0] + 1;
+        nfa.stateNum++;
+        reNumState(nfa, 1);
+        mapSetState(nfa, 0, EPSILON, nfa.acceptStates[0]);
+        mapSetState(nfa, 0, EPSILON, 1);
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, 1);
+        nfa.isIn = false;
+        nfa.isOut = true;
+        return nfa;
+    }
+    if (nfa.isIn && nfa.isOut) {
+        nfa.graph.set(nfa.acceptStates[0] + 1, new Map());
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, nfa.acceptStates[0] + 1);
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, 0);
+        nfa.acceptStates[0] = nfa.acceptStates[0] + 1;
+        nfa.stateNum++;
+        reNumState(nfa, 1);
+        mapSetState(nfa, 0, EPSILON, nfa.acceptStates[0]);
+        mapSetState(nfa, 0, EPSILON, 1);
+        nfa.isIn = false;
+        nfa.isOut = false;
+        return nfa;
+    }
+    return nfa;
+}
+function orNFA(stack) {
     if (stack.length < 2) {
         throw new Error('less than 2 elements in stack');
     }
@@ -76,12 +147,41 @@ function orNFA(stack, index) {
     right.char.forEach(i => left.char.add(i));
     left.stateNum += (right.stateNum - 1);
     left.substr += `|${right.substr}`;
+    left.len = left.substr.length;
     return left;
 }
 function nfaOrModify(nfa) {
     if (!nfa.isIn && !nfa.isOut) {
         return nfa;
     }
+    if (!nfa.isIn && nfa.isOut) {
+        nfa.graph.set(nfa.acceptStates[0] + 1, new Map());
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, nfa.acceptStates[0] + 1);
+        nfa.acceptStates[0]++;
+        nfa.stateNum++;
+        nfa.isOut = false;
+        return nfa;
+    }
+    if (nfa.isIn && !nfa.isOut) {
+        reNumState(nfa, 1);
+        mapSetState(nfa, 0, EPSILON, 1);
+        nfa.stateNum++;
+        nfa.isIn = false;
+        return nfa;
+    }
+    if (nfa.isIn && nfa.isOut) {
+        nfa.graph.set(nfa.acceptStates[0] + 1, new Map());
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, nfa.acceptStates[0] + 1);
+        nfa.acceptStates[0]++;
+        nfa.stateNum++;
+        reNumState(nfa, 1);
+        mapSetState(nfa, 0, EPSILON, 1);
+        nfa.stateNum++;
+        nfa.isIn = false;
+        nfa.isOut = false;
+        return nfa;
+    }
+    return nfa;
 }
 function concatNFA(stack, index) {
     if (stack.length === 1) {
@@ -182,16 +282,22 @@ function emptyNFA(index) {
     return nfa;
 }
 function testReg() {
-    const r0 = regexp2Nfa("");
-    printReg(r0);
-    const r1 = regexp2Nfa("a");
-    printReg(r1);
-    const r2 = regexp2Nfa("abc");
-    printReg(r2);
-    const r3 = regexp2Nfa("b|c");
-    printReg(r3);
-    const r4 = regexp2Nfa("ab|c");
-    printReg(r4);
+    // const r0 = regexp2Nfa("")
+    // printReg(r0)
+    // const r1 = regexp2Nfa("a")
+    // printReg(r1)
+    // const r2 = regexp2Nfa("abc")
+    // printReg(r2)
+    // const r3 = regexp2Nfa("b|c")
+    // printReg(r3)
+    // const r4 = regexp2Nfa("ab|c")
+    // printReg(r4)
+    // const r5 = regexp2Nfa("a*")
+    // printReg(r5)
+    const r6 = regexp2Nfa("a*b");
+    printReg(r6);
+    const r7 = regexp2Nfa("a*|b");
+    printReg(r7);
 }
 function printReg(r) {
     var _a;

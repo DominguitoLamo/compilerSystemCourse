@@ -84,15 +84,16 @@ function isLetter(c: string) {
     return c >= 'a' && c <= 'z'
 }
 
-function mapSetState(nfa: NFAMap, state: number, char: string, nextState: number) {
+function mapSetState(nfa: NFAMap, state: number, char: string, nextState: number | Set<number>) {
+    const nextStates = nextState instanceof Set ? [...nextState] : [nextState]
     if (!nfa.graph.get(state)) {
         nfa.graph.set(state, new Map())
     }
     const statePaths = nfa.graph.get(state)!
     if (!statePaths.get(char)) {
-        statePaths.set(char, new Set([nextState]))
+        statePaths.set(char, new Set([...nextStates]))
     } else {
-        statePaths.get(char)!.add(nextState)
+        nextStates.forEach(i => statePaths.get(char)!.add(i))
     }
 }
 
@@ -206,6 +207,42 @@ function nfaOrModify(nfa: NFAMap) {
     if (!nfa.isIn && !nfa.isOut) {
         return nfa
     }
+
+    if (!nfa.isIn && nfa.isOut) {
+        nfa.graph.set(nfa.acceptStates[0] + 1, new Map())
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, nfa.acceptStates[0] + 1)
+
+        nfa.acceptStates[0]++
+        nfa.stateNum++
+        nfa.isOut = false
+        return nfa
+    }
+
+    if (nfa.isIn && !nfa.isOut) {
+        reNumState(nfa, 1)
+        mapSetState(nfa, 0, EPSILON, 1)
+
+        nfa.stateNum++
+        nfa.isIn = false
+        return nfa
+    }
+
+    if (nfa.isIn && nfa.isOut) {
+        nfa.graph.set(nfa.acceptStates[0] + 1, new Map())
+        mapSetState(nfa, nfa.acceptStates[0], EPSILON, nfa.acceptStates[0] + 1)
+        nfa.acceptStates[0]++
+        nfa.stateNum++
+
+        reNumState(nfa, 1)
+        mapSetState(nfa, 0, EPSILON, 1)
+        nfa.stateNum++
+
+        nfa.isIn = false
+        nfa.isOut = false
+        return nfa
+    }
+
+    return nfa
 }
 
 function concatNFA(stack: Array<NFAMap>, index: number) : NFAMap {
@@ -247,7 +284,7 @@ function concatNFA(stack: Array<NFAMap>, index: number) : NFAMap {
             reNumState(current, nfa.stateNum)
             nfa.stateNum = nfa.stateNum + current.stateNum
             current.graph.forEach((path, state) => {
-                nfa.graph.set(state, path)
+                path.forEach((next, c) => mapSetState(nfa, state, c, next))
             })
             nfa.acceptStates = current.acceptStates
         }
@@ -322,23 +359,29 @@ function emptyNFA(index: number) {
 }
 
 function testReg() {
-    const r0 = regexp2Nfa("")
-    printReg(r0)
+    // const r0 = regexp2Nfa("")
+    // printReg(r0)
 
-    const r1 = regexp2Nfa("a")
-    printReg(r1)
+    // const r1 = regexp2Nfa("a")
+    // printReg(r1)
 
-    const r2 = regexp2Nfa("abc")
-    printReg(r2)
+    // const r2 = regexp2Nfa("abc")
+    // printReg(r2)
 
-    const r3 = regexp2Nfa("b|c")
-    printReg(r3)
+    // const r3 = regexp2Nfa("b|c")
+    // printReg(r3)
 
-    const r4 = regexp2Nfa("ab|c")
-    printReg(r4)
+    // const r4 = regexp2Nfa("ab|c")
+    // printReg(r4)
 
-    const r5 = regexp2Nfa("a*")
-    printReg(r5)
+    // const r5 = regexp2Nfa("a*")
+    // printReg(r5)
+
+    const r6 = regexp2Nfa("a*b")
+    printReg(r6)
+
+    const r7 = regexp2Nfa("a*|b")
+    printReg(r7)
 }
 
 function printReg(r: Reg) {
