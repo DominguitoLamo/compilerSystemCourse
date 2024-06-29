@@ -4,6 +4,7 @@ function regexp2Nfa(pattern) {
     const r = {
         pattern: pattern,
         len: pattern.length,
+        pStack: []
     };
     const nfa = convert(r, 0);
     r.nfa = nfa;
@@ -18,17 +19,25 @@ function convert(r, startIndex) {
     while (current < r.len) {
         const char = r.pattern[current];
         if (char === '(') {
+            r.pStack.push(char);
             current++;
-            const nfa = convert(r, current);
+            const nfa = addParenthesis(convert(r, current));
+            r.pStack.pop();
+            r.pStack.pop(); // discard ()
             stack.push(nfa);
             current += nfa.len;
-            if (current > r.len || r.pattern[current] != ')') {
+            if (current > r.len) {
                 throw new Error(`no close parenthesis at index ${current}`);
             }
             current++;
             continue;
         }
         if (char === ')') {
+            const pLen = r.pStack.length;
+            if (r.pStack[pLen - 1] !== '(') {
+                throw new Error(`no open parenthesis. The index is ${current}`);
+            }
+            r.pStack.push(char);
             break;
         }
         if (isLetter(char)) {
@@ -46,6 +55,12 @@ function convert(r, startIndex) {
                 stack.push(nfa);
                 continue;
             }
+            else if (isOpenParenthesis(nextChar)) {
+                stack.push(convert(r, current));
+                const nfa = orNFA(stack);
+                stack.push(nfa);
+                continue;
+            }
             throw new Error(`wrong char ${char} after or operation at ${current}`);
         }
         if (char === '*') {
@@ -58,6 +73,14 @@ function convert(r, startIndex) {
     }
     const nfa = concatNFA(stack, startIndex);
     return nfa;
+}
+function isOpenParenthesis(c) {
+    return c === '(';
+}
+function addParenthesis(n) {
+    n.substr = `(${n.substr})`;
+    n.len += 2;
+    return n;
 }
 function isLetter(c) {
     return c >= 'a' && c <= 'z';
@@ -309,8 +332,10 @@ function testReg() {
     // printReg(r6)
     // const r7 = regexp2Nfa("a*|b")
     // printReg(r7)
-    const r8 = regexp2Nfa("(ab)c");
-    printReg(r8);
+    // const r8 = regexp2Nfa("(ab)|c")
+    // printReg(r8)
+    const r9 = regexp2Nfa("((ab)*a)");
+    printReg(r9);
 }
 function printReg(r) {
     var _a;
